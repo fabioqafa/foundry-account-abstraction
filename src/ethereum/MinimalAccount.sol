@@ -10,23 +10,38 @@ import {ECDSA} from "../../lib/openzeppelin-contracts/contracts/utils/cryptograp
 import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS} from "../../lib/account-abstraction/contracts/core/Helpers.sol";
 import {IEntryPoint} from "../../lib/account-abstraction/contracts/interfaces/IEntryPoint.sol";
 
+/**
+ * @title MinimalAccount
+ * @dev A minimal implementation of an Account contract that integrates with
+ * an EntryPoint contract for account abstraction.
+ * The contract inherits OpenZeppelin's Ownable for ownership management.
+ */
 contract MinimalAccount is IAccount, Ownable {
-    /*/////////////////////////////////////////////
-                        ERRORS
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                                ERRORS
+    //////////////////////////////////////////////////////////////*/
     error MinimalAccount__MissingFundsNotPositive();
     error MinimalAccount__NotFromEntryPoint();
     error MinimalAccount__NotFromEntryPointOrOwner();
     error MinimalAccount__TransferFailed();
 
-    /*/////////////////////////////////////////////
-                    STATE VARIABLES
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                            STATE VARIABLES
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev The EntryPoint contract instance that this account is associated with.
+     * This is immutable and set during contract deployment.
+     */
     IEntryPoint private immutable i_entryPoint;
 
-    /*/////////////////////////////////////////////
-                    MODIFIERS
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                                MODIFIERS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Modifier to ensure the function is only called by the EntryPoint contract.
+     */
     modifier requireFromEntryPoint() {
         if (msg.sender != address(i_entryPoint)) {
             revert MinimalAccount__NotFromEntryPoint();
@@ -34,6 +49,9 @@ contract MinimalAccount is IAccount, Ownable {
         _;
     }
 
+    /**
+     * @dev Modifier to ensure the function is only called by the EntryPoint contract or the contract owner.
+     */
     modifier requireFromEntryPointOrOwner() {
         if (msg.sender != address(i_entryPoint) && msg.sender != owner()) {
             revert MinimalAccount__NotFromEntryPointOrOwner();
@@ -41,20 +59,40 @@ contract MinimalAccount is IAccount, Ownable {
         _;
     }
 
-    /*/////////////////////////////////////////////
-                        FUNCTIONS
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                                FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Constructor to initialize the MinimalAccount contract.
+     * @param entryPoint The address of the EntryPoint contract.
+     */
     constructor(address entryPoint) Ownable(msg.sender) {
         i_entryPoint = IEntryPoint(entryPoint);
     }
 
+    /**
+     * @dev Fallback function to receive Ether.
+     * This function is called when the contract receives Ether with empty calldata.
+     */
     receive() external payable {}
 
+    /**
+     * @dev Fallback function to receive Ether.
+     * This function is called when the contract receives Ether with non-empty calldata.
+     */
     fallback() external payable {}
 
-    /*/////////////////////////////////////////////
-                    EXTERNAL FUNCTIONS
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                        EXTERNAL FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Executes a transaction from the account to a target address.
+     * @param dest The address to which the call is made.
+     * @param value The amount of Ether to send.
+     * @param functionData The call data to be sent.
+     */
     function execute(
         address dest,
         uint256 value,
@@ -66,6 +104,13 @@ contract MinimalAccount is IAccount, Ownable {
         }
     }
 
+    /**
+     * @dev Validates a user operation before execution.
+     * @param userOp The packed user operation data.
+     * @param userOpHash The hash of the user operation.
+     * @param missingAccountFunds The amount of funds required to complete the operation.
+     * @return validationData The result of the signature validation.
+     */
     function validateUserOp(
         PackedUserOperation calldata userOp,
         bytes32 userOpHash,
@@ -75,11 +120,17 @@ contract MinimalAccount is IAccount, Ownable {
         _payPrefund(missingAccountFunds);
     }
 
-    /*/////////////////////////////////////////////
-                    INTERNAL FUNCTIONS
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                        INTERNAL FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
-    // EIP-191 version of the signed hash
+    /**
+     * @dev Internal function to validate the signature of a user operation.
+     * Uses EIP-191 to recover the signer address.
+     * @param userOp The packed user operation data.
+     * @param userOpHash The hash of the user operation.
+     * @return validationData A status code indicating the result of the signature validation.
+     */
     function _validateSignature(
         PackedUserOperation calldata userOp,
         bytes32 userOpHash
@@ -94,22 +145,20 @@ contract MinimalAccount is IAccount, Ownable {
         return SIG_VALIDATION_SUCCESS;
     }
 
+    /**
+     * @dev Internal function to pay the required funds for the operation.
+     * @param missingAccountFunds The amount of funds needed to be transferred.
+     */
     function _payPrefund(uint256 missingAccountFunds) internal {
         // Check if the missingAccountFunds is positive, otherwise throw the custom error
         if (missingAccountFunds <= 0) {
             revert MinimalAccount__MissingFundsNotPositive();
         }
 
-        // Attempt to transfer the funds using a standard gas limit
+        // Attempt to transfer the funds to msg.sender
         (bool success, ) = payable(msg.sender).call{value: missingAccountFunds}(
             ""
         );
-
-        // (bool success, ) = payable(msg.sender).call{
-        //     value: missingAccountFunds,
-        //     gas: type(uint256).max
-        // }("");
-        // (success);
 
         // Check if the transfer was successful, otherwise throw the custom error
         if (!success) {
@@ -117,9 +166,14 @@ contract MinimalAccount is IAccount, Ownable {
         }
     }
 
-    /*/////////////////////////////////////////////
-                        GETTERS
-    /////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                            GETTERS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Returns the address of the EntryPoint contract associated with this account.
+     * @return The address of the EntryPoint contract.
+     */
     function getEntryPoint() external view returns (address) {
         return address(i_entryPoint);
     }
